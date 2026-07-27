@@ -1,0 +1,13 @@
+entrega/
+    resultados.jsonl
+    generador.py
+    informe_tecnico.pdf
+    base_vectorial/
+        encoder_<nombre>/
+            index.faiss
+            metadata.jsonl
+        encoder_<nombre2>/ (si aplica)
+            index.faiss
+            metadata.jsonl
+        grafo/ (bonus, si aplica)
+            grafo.graphml
