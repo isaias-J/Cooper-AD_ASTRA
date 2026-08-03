@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from .chunking import word_count
 REQUIRED={"doc_id","chunk_id","fuente","formato","fenomeno","posicion","num_tokens","texto"}
-def validate_metadata(path:Path, tokenizer=None):
+def validate_metadata(path:Path, tokenizer=None, max_tokens=480):
  seen=set(); errors=[]
  for i,line in enumerate(path.read_text(encoding="utf-8").splitlines()):
   x=json.loads(line); missing=REQUIRED-set(x)
@@ -11,6 +11,9 @@ def validate_metadata(path:Path, tokenizer=None):
   if x.get("chunk_id") in seen: errors.append(f"{i}: chunk_id duplicado")
   seen.add(x.get("chunk_id"))
   if not x.get("texto","").strip(): errors.append(f"{i}: texto vacio")
+  if not isinstance(x.get("fenomeno"),int) or x.get("fenomeno") not in {1,2,3}: errors.append(f"{i}: fenomeno invalido")
+  if not isinstance(x.get("posicion"),int) or x.get("posicion") < 0: errors.append(f"{i}: posicion invalida")
+  if not isinstance(x.get("num_tokens"),int) or x.get("num_tokens") <= 0 or x.get("num_tokens") > max_tokens: errors.append(f"{i}: num_tokens invalido")
   if tokenizer and len(tokenizer.encode(x["texto"],add_special_tokens=False))!=x["num_tokens"]: errors.append(f"{i}: num_tokens inconsistente")
  return errors
 def validate_results(path:Path, official=True, known_chunk_ids=None, known_doc_ids=None):

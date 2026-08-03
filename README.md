@@ -26,9 +26,14 @@ La ultima comprobacion debe mostrar `True` y `NVIDIA GeForce RTX 3060 Ti` antes 
 python scripts/build_baseline.py --corpus-root "C:\ruta\CORPUS CODEFEST AD ASTRA 2026"
 python scripts/extract_queries.py --pdf "C:\ruta\Extracto_Preguntas_50_v2.pdf"
 python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output resultados.jsonl
+python scripts/render_technical_report.py --index-dir base_vectorial/encoder_multilingual_e5_base --output output/informe_tecnico.pdf
+python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --report output/informe_tecnico.pdf
+python scripts/validate_delivery.py --delivery-dir entrega
 pytest -q
 ```
 
 El constructor deja `index.faiss`, `metadata.jsonl` y `encoder_config.json` bajo `base_vectorial/encoder_multilingual_e5_base/`. La posicion de cada metadata coincide exactamente con el ID interno de FAISS. `metadata.jsonl` conserva el texto original, sin resumen.
 
-PBF e imagenes se reportan como fallas explicitamente hasta habilitar un extractor de esquema geoespacial u OCR validado; nunca se indexa contenido inventado.
+Las imágenes se omiten y reportan explícitamente hasta que se active OCR validado; nunca se indexa contenido inventado.
+
+Para incluir texto de imágenes ya revisadas como relevante, ejecutar el constructor con `--enable-ocr`; requiere Tesseract instalado. Los PBF se decodifican con `mapbox-vector-tile`, conservando atributos y deduplicando entidades repetidas dentro de cada tile.

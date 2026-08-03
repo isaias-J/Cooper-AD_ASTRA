@@ -5,7 +5,8 @@ requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12", "faiss-cpu>=1.8", "langdetect>=1.0.9",
   "openpyxl>=3.1", "pymupdf>=1.24", "sentence-transformers>=3.0",
-  "torch>=2.3"
+  "torch>=2.3", "mapbox-vector-tile>=2.1", "pillow>=10.0", "pytesseract>=0.3.10",
+  "reportlab>=4.0"
 ]
 
 [tool.pytest.ini_options]

@@ -14,6 +14,17 @@ def phenomenon(rel: str) -> int | None:
         if first.startswith(key): return value
     return None
 
+def detect_language(text: str) -> str:
+    """Conservative ES/EN/PT detector without a network/download dependency."""
+    words = re.findall(r"[a-záéíóúüñçãõ]+", text.lower())
+    scores = {
+        "es": sum(w in {"de","la","el","los","las","para","que","en","con","por","una","del","como"} for w in words),
+        "en": sum(w in {"the","and","of","to","in","for","with","that","from","is","are","this"} for w in words),
+        "pt": sum(w in {"a","é","de","da","do","para","que","em","com","por","uma","dos","das","não","também","comissão"} for w in words),
+    }
+    language, score = max(scores.items(), key=lambda item: item[1])
+    return language if score >= 2 else "und"
+
 def stable_doc_id(rel: str) -> str:
     # Hash only the normalized relative route: IDs survive copies of the corpus.
     return "DOC-" + hashlib.sha256(rel.encode("utf-8")).hexdigest()[:16].upper()
