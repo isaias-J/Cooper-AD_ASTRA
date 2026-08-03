@@ -1,0 +1,13 @@
+[project]
+name = "cooper-codefest"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12", "faiss-cpu>=1.8", "langdetect>=1.0.9",
+  "openpyxl>=3.1", "pymupdf>=1.24", "sentence-transformers>=3.0",
+  "torch>=2.3"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

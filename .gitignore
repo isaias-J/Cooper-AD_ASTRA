@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/raw/
+data/interim/
+data/processed/*.jsonl
+base_vectorial/
+output/
+reports/corpus_inventory.*
+reports/implementation_report.md
+.cache/
+models/
+*.faiss
