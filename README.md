@@ -2,6 +2,8 @@
 
 Baseline reproducible de recuperacion vectorial pura: mismo encoder multilingue para pasajes y consultas, prefijos E5, embeddings L2 normalizados y `faiss.IndexFlatIP`. No incluye LLM, BM25, ChromaDB, reranking ni expansion de consultas.
 
+Repositorio oficial del equipo Cooper para la Hackathon de Recuperación de Información en Defensa. Incluye investigación, desarrollo y experimentación con búsqueda semántica, embeddings, recuperación de información y técnicas de ranking.
+
 ## Preparacion (Windows + RTX 3060 Ti)
 
 ```powershell
