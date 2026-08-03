@@ -1,39 +1,71 @@
 # Cooper - CODEFEST AD ASTRA 2026
 
-Baseline reproducible de recuperacion vectorial pura: mismo encoder multilingue para pasajes y consultas, prefijos E5, embeddings L2 normalizados y `faiss.IndexFlatIP`. No incluye LLM, BM25, ChromaDB, reranking ni expansion de consultas.
+Recuperación vectorial pura con un encoder público de Hugging Face, embeddings L2 normalizados y `faiss.IndexFlatIP`. No usa LLM, BM25, ChromaDB, reranking, cross-encoder ni expansión de consultas. El mismo `intfloat/multilingual-e5-base` y sus prefijos E5 (`passage:`/`query:`) se usan al indexar y consultar.
 
-Repositorio oficial del equipo Cooper para la Hackathon de Recuperación de Información en Defensa. Incluye investigación, desarrollo y experimentación con búsqueda semántica, embeddings, recuperación de información y técnicas de ranking.
+## Windows + RTX 3060 Ti
 
-## Preparacion (Windows + RTX 3060 Ti)
+Requisitos: Windows 10/11, driver NVIDIA funcional y Python 3.11. No es necesario instalar CUDA Toolkit: el wheel de PyTorch trae su runtime CUDA.
 
 ```powershell
-py --version
-nvidia-smi
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-# Seleccionar el comando CUDA vigente de https://pytorch.org/get-started/locally/
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-pip install -e .
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+# Wheel oficial probado para Windows/Pip/CUDA 12.8:
+python -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -r requirements.txt
 ```
 
-La ultima comprobacion debe mostrar `True` y `NVIDIA GeForce RTX 3060 Ti` antes de una indexacion competitiva.
+VS Code queda configurado para `${workspaceFolder}\\.venv\\Scripts\\python.exe` en `.vscode/settings.json`.
 
-## Construccion
+### Verificar GPU
+
+La primera ejecución descarga `intfloat/multilingual-e5-base` desde Hugging Face (aproximadamente 1 GB de caché). No indexa el corpus.
 
 ```powershell
-python scripts/build_baseline.py --corpus-root "C:\ruta\CORPUS CODEFEST AD ASTRA 2026"
+nvidia-smi
+python scripts/gpu_smoke_test.py --device cuda
+```
+
+Debe mostrar `torch.cuda.is_available(): True`, `NVIDIA GeForce RTX 3060 Ti`, dispositivo efectivo `cuda`, embeddings normalizados y una búsqueda `IndexFlatIP` correcta.
+
+## Indexar el corpus
+
+El corpus completo descomprimido ocupa cerca de 3 GB y la indexación puede tardar. Para auditarlo sin cargar el modelo ni crear embeddings:
+
+```powershell
+python scripts/build_baseline.py --corpus-root "C:\ruta\CORPUS CODEFEST AD ASTRA 2026" --audit-only
+```
+
+Para construir con CUDA y un batch inicial conservador para 8 GB (se reduce automáticamente si ocurre OOM):
+
+```powershell
+python scripts/build_baseline.py --corpus-root "C:\ruta\CORPUS CODEFEST AD ASTRA 2026" --device cuda --batch-size 16
+```
+
+Se crean `index.faiss`, `metadata.jsonl` y `encoder_config.json` en `base_vectorial/encoder_multilingual_e5_base/`. FAISS funciona en CPU en Windows; la RTX acelera los embeddings. `.cache/` conserva extracción por hash y embeddings normalizados para evitar releer/reembeddar archivos intactos. El máximo de 480 tokens aplica al índice; el límite de 250 palabras aplica solamente a cada fragmento de `resultados.jsonl`. Las imágenes se omiten explícitamente salvo que se habilite OCR verificado con `--enable-ocr`.
+
+## Generar resultados
+
+```powershell
 python scripts/extract_queries.py --pdf "C:\ruta\Extracto_Preguntas_50_v2.pdf"
-python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output resultados.jsonl
+python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output resultados.jsonl --device cuda
+```
+
+El cargador exige que FAISS y metadata tengan el mismo número de registros y que modelo, dimensión y prefijos coincidan con `encoder_config.json`. La salida contiene top-10 chunks y tres documentos distintos.
+
+## Pruebas y entrega
+
+```powershell
+python -m pytest -q
 python scripts/render_technical_report.py --index-dir base_vectorial/encoder_multilingual_e5_base --output output/informe_tecnico.pdf
 python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --report output/informe_tecnico.pdf
 python scripts/validate_delivery.py --delivery-dir entrega
-pytest -q
 ```
 
-El constructor deja `index.faiss`, `metadata.jsonl` y `encoder_config.json` bajo `base_vectorial/encoder_multilingual_e5_base/`. La posicion de cada metadata coincide exactamente con el ID interno de FAISS. `metadata.jsonl` conserva el texto original, sin resumen.
+## Troubleshooting CUDA
 
-Las imágenes se omiten y reportan explícitamente hasta que se active OCR validado; nunca se indexa contenido inventado.
-
-Para incluir texto de imágenes ya revisadas como relevante, ejecutar el constructor con `--enable-ocr`; requiere Tesseract instalado. Los PBF se decodifican con `mapbox-vector-tile`, conservando atributos y deduplicando entidades repetidas dentro de cada tile.
+- `torch.cuda.is_available()` es `False`: confirme `nvidia-smi`, active `.venv` y ejecute `python -m pip show torch`. Si la versión muestra CPU, reinstale únicamente PyTorch con el comando CUDA anterior.
+- `CUDA out of memory`: cierre procesos que usen GPU según `nvidia-smi` o reduzca `--batch-size`. El encoder ya reintenta con la mitad hasta llegar a 1.
+- Driver/runtime: `nvidia-smi` muestra la versión máxima soportada por el driver; `python -c "import torch; print(torch.__version__, torch.version.cuda)"` muestra el runtime incluido en PyTorch. No tienen que ser idénticas.
+- VS Code usa otro Python: seleccione manualmente `.venv\\Scripts\\python.exe` y compruebe `python -c "import sys; print(sys.executable)"`.
+- Diagnóstico completo: `python scripts/gpu_smoke_test.py --device cuda`. Para verificar solo lógica sin GPU: `python scripts/gpu_smoke_test.py --device cpu --no-fp16`.

@@ -20,16 +20,18 @@ def output_texts(text):
  if kept: out.append(" ".join(kept))
  return out
 def main():
- p=argparse.ArgumentParser(); p.add_argument("--queries",type=Path,required=True); p.add_argument("--index-dir",type=Path,required=True); p.add_argument("--output",type=Path,default=Path("resultados.jsonl")); p.add_argument("--aggregation",choices=["max","top2sum","mean"],default="max"); p.add_argument("--model",default="intfloat/multilingual-e5-base"); a=p.parse_args()
- queries=[json.loads(x) for x in a.queries.read_text(encoding="utf-8").splitlines() if x.strip()]
- r=Retriever(a.index_dir,Encoder(a.model)); rows=[]
+ p=argparse.ArgumentParser(); p.add_argument("--queries",type=Path,required=True); p.add_argument("--index-dir",type=Path,required=True); p.add_argument("--output",type=Path,default=Path("resultados.jsonl")); p.add_argument("--aggregation",choices=["max","top2sum","mean"],default="max"); p.add_argument("--model",default="intfloat/multilingual-e5-base"); p.add_argument("--device",choices=["auto","cuda","cpu"],default="auto"); p.add_argument("--batch-size",type=int,default=16); p.add_argument("--no-fp16",action="store_true"); p.add_argument("--candidates",type=int,default=1000); a=p.parse_args()
+ with a.queries.open(encoding="utf-8") as stream: queries=[json.loads(line) for line in stream if line.strip()]
+ r=Retriever(a.index_dir,Encoder(a.model,device=a.device,use_fp16=not a.no_fp16)); rows=[]
  for q in queries:
   query=q.get("query") or q.get("text") or q.get("consulta")
   if not query: raise ValueError(f"Consulta sin texto: {q}")
-  docs,hits=r.search(query,aggregation=a.aggregation)
+  docs,hits=r.search(query,top_chunks=a.candidates,candidates=a.candidates,aggregation=a.aggregation)
   emitted=[]
   for hit in hits:
-   for text in output_texts(hit["texto"]):
+   try: presentation=output_texts(hit["texto"])
+   except ValueError: continue # A real unbreakable unit cannot be emitted under the official 250-word cap.
+   for text in presentation:
     emitted.append({"chunk_id":hit["chunk_id"],"doc_id":hit["doc_id"],"text":text})
     if len(emitted)==10: break
    if len(emitted)==10: break

@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.huggingface/
+*.egg-info/
+build/
+dist/
 data/raw/
 data/interim/
 data/processed/*.jsonl
@@ -12,3 +18,7 @@ reports/implementation_report.md
 .cache/
 models/
 *.faiss
+*.zip
+*.pt
+*.pth
+*.safetensors

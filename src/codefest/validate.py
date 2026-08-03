@@ -5,7 +5,8 @@ from .chunking import word_count
 REQUIRED={"doc_id","chunk_id","fuente","formato","fenomeno","posicion","num_tokens","texto"}
 def validate_metadata(path:Path, tokenizer=None, max_tokens=480):
  seen=set(); errors=[]
- for i,line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+ with path.open(encoding="utf-8") as stream: lines=list(stream)
+ for i,line in enumerate(lines):
   x=json.loads(line); missing=REQUIRED-set(x)
   if missing: errors.append(f"{i}: faltan {missing}")
   if x.get("chunk_id") in seen: errors.append(f"{i}: chunk_id duplicado")
@@ -17,7 +18,8 @@ def validate_metadata(path:Path, tokenizer=None, max_tokens=480):
   if tokenizer and len(tokenizer.encode(x["texto"],add_special_tokens=False))!=x["num_tokens"]: errors.append(f"{i}: num_tokens inconsistente")
  return errors
 def validate_results(path:Path, official=True, known_chunk_ids=None, known_doc_ids=None):
- rows=[json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]; errors=[]
+ with path.open(encoding="utf-8") as stream: rows=[json.loads(line) for line in stream if line.strip()]
+ errors=[]
  if official and len(rows)!=50: errors.append("Se requieren exactamente 50 lineas")
  for i,row in enumerate(rows,1):
   if official and row.get("query_id")!=f"q{i:03d}": errors.append(f"Linea {i}: query_id incorrecto")
