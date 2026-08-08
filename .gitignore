@@ -17,6 +17,9 @@ reports/corpus_inventory.*
 reports/implementation_report.md
 .cache/
 models/
+CORPUS*/
+.DS_Store
+reports/coverage_dry_run.*
 *.faiss
 *.zip
 *.pt

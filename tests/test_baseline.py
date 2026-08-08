@@ -7,6 +7,7 @@ from codefest.validate import validate_results
 from codefest.vector import l2_normalize, select_device
 from codefest.retrieval import Retriever
 from codefest.cache import ExtractionCache
+from codefest.extract import _json_blocks
 def test_sentence_split_preserves_terminal_sentence():
  assert sentences("Hola mundo. ¿Como estas? Tudo bem!")==["Hola mundo.","¿Como estas?","Tudo bem!"]
 def test_list_items_are_never_cut():
@@ -61,3 +62,18 @@ def test_extraction_cache_reuses_unchanged_file(tmp_path):
  cache.put(source,"a.txt",payload)
  restored, hit=cache.get(source,"a.txt")
  assert hit and restored==payload
+
+def test_json_paragraph_arrays_are_extracted_in_order():
+    value={"title":"Titulo", "body_paragraphs":["Primero.", "Segundo."], "nested":{"text":"Tercero."}}
+    blocks=list(_json_blocks(value))
+    assert [text for text, _ in blocks] == ["title: Titulo", "body_paragraphs: Primero.", "body_paragraphs: Segundo.", "text: Tercero."]
+    assert blocks[2][1]["json_path"] == "$.body_paragraphs[1]"
+
+def test_metadata_validator_rejects_invalid_required_types(tmp_path):
+    metadata=tmp_path/"metadata.jsonl"
+    metadata.write_text(json.dumps({
+        "doc_id":"d", "chunk_id":"c", "fuente":"source.pdf", "formato":"pdf",
+        "fenomeno":"1", "posicion":0, "num_tokens":1, "texto":"Texto."
+    })+"\n", encoding="utf-8")
+    from codefest.validate import validate_metadata
+    assert any("fenomeno invalido" in error for error in validate_metadata(metadata))

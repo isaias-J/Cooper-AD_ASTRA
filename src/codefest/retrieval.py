@@ -25,8 +25,11 @@ class Retriever:
             if config.get("prefixes") != {"passage": "passage: ", "query": "query: "}:
                 raise ValueError("Prefijos del índice incompatibles")
 
-    def search(self, query, top_chunks=10, candidates=100, aggregation="max"):
-        scores, ids = self.index.search(self.encoder.encode([query], "query"), min(candidates, self.index.ntotal))
+    def search(self, query, top_chunks=10, candidates=100, aggregation="max", batch_size=32):
+        scores, ids = self.index.search(
+            self.encoder.encode([query], "query", batch_size=batch_size),
+            min(candidates, self.index.ntotal),
+        )
         hits = []
         for score, i in zip(scores[0], ids[0]):
             if i >= 0:

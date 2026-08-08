@@ -10,12 +10,18 @@ TEXT_KEYS = ("title", "body", "body_text", "body_paragraphs", "content", "text",
 
 
 def _json_blocks(value, path="$"):
-    """Yield independent text fields, preserving their JSON path instead of flattening a file."""
+    """Yield text fields, including strings nested in paragraph/list arrays."""
     if isinstance(value, dict):
         for key, child in value.items():
             child_path = f"{path}.{key}"
             if key.lower() in TEXT_KEYS and isinstance(child, (str, int, float)):
                 yield f"{key}: {child}", {"json_path": child_path}
+            elif key.lower() in TEXT_KEYS and isinstance(child, list):
+                for item_number, item in enumerate(child):
+                    if isinstance(item, (str, int, float)):
+                        yield f"{key}: {item}", {"json_path": f"{child_path}[{item_number}]"}
+                    else:
+                        yield from _json_blocks(item, f"{child_path}[{item_number}]")
             else:
                 yield from _json_blocks(child, child_path)
     elif isinstance(value, list):

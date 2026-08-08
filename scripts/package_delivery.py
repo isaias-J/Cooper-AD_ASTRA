@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
-"""Copies only final required artifacts into entrega/ after a successful preflight."""
+"""Copies final artifacts and the local package needed by generador.py."""
 from __future__ import annotations
-import argparse, shutil
+
+import argparse
+import shutil
 from pathlib import Path
+
+
 def main():
- p=argparse.ArgumentParser(); p.add_argument("--results",type=Path,required=True); p.add_argument("--index-dir",type=Path,required=True); p.add_argument("--report",type=Path,required=True); p.add_argument("--out",type=Path,default=Path("entrega")); a=p.parse_args()
- if a.out.exists() and any(a.out.iterdir()): raise RuntimeError("entrega no esta vacia; limpiela manualmente para evitar mezcla de artefactos")
- a.out.mkdir(parents=True,exist_ok=True); shutil.copy2(a.results,a.out/"resultados.jsonl"); shutil.copy2("generador.py",a.out/"generador.py"); shutil.copy2(a.report,a.out/"informe_tecnico.pdf")
- target=a.out/"base_vectorial"/a.index_dir.name; target.parent.mkdir(); shutil.copytree(a.index_dir,target)
-if __name__=="__main__": main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--results", type=Path, required=True)
+    parser.add_argument("--index-dir", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--out", type=Path, default=Path("entrega"))
+    args = parser.parse_args()
+    existing = [item for item in args.out.iterdir() if item.name != "ESTRUCTURA"] if args.out.exists() else []
+    if existing:
+        raise RuntimeError("entrega no esta vacia; limpiela manualmente para evitar mezcla de artefactos")
+    args.out.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(args.results, args.out / "resultados.jsonl")
+    shutil.copy2(Path(__file__).parents[1] / "generador.py", args.out / "generador.py")
+    shutil.copy2(args.report, args.out / "informe_tecnico.pdf")
+    target = args.out / "base_vectorial" / args.index_dir.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(args.index_dir, target)
+    shutil.copytree(Path(__file__).parents[1] / "src" / "codefest", args.out / "src" / "codefest")
+
+
+if __name__ == "__main__":
+    main()

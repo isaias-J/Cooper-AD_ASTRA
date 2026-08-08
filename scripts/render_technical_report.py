@@ -20,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--index-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("output/informe_tecnico.pdf"))
-    parser.add_argument("--results", type=Path, default=Path("resultados_final.jsonl"))
+    parser.add_argument("--results", type=Path, default=Path("resultados.jsonl"))
     parser.add_argument("--failures", type=Path, default=Path("data/processed/extraction_failures.jsonl"))
     args = parser.parse_args()
     config = json.loads((args.index_dir / "encoder_config.json").read_text(encoding="utf-8"))
@@ -45,8 +45,8 @@ def main():
         ("Extracción estructurada y cobertura", [
             "PDF: PyMuPDF extrae bloques ordenados por página y elimina únicamente encabezados/pies repetidos. No se concatena el documento completo. JSON: los campos textuales se conservan individualmente con json_path. CSV/XLSX: cada fila mantiene pares columna: valor. HTML: párrafos y elementos de lista. PBF: atributos por feature.",
             "El chunker trata listas como ítems completos (incluye líneas envueltas) y tablas/filas como unidades completas. La segmentación de prosa ES/EN/PT solo divide después de puntuación terminal. No inventa fronteras.",
-            f"Cobertura final: {len(documents):,} documentos con chunks de 1,837 archivos dentro de los tres fenómenos; 75 no aportaron chunks. De estos últimos, 66 no tienen texto extraíble y 9 son imágenes pendientes de OCR. Hay 118 documentos parcialmente cubiertos: contienen al menos un bloque no indexable, pero sí chunks válidos.",
-            "Las imágenes relevantes inspeccionadas incluyen una tabla de residuos orbitales y gráficos de evaluación global/ASAT. OCR está implementado mediante pytesseract y deja trazabilidad ocr_engine; Tesseract no estaba instalado, por lo que esas 9 imágenes se excluyeron explícitamente sin bloquear la reconstrucción.",
+            f"Cobertura final: {len(documents):,} documentos con chunks. Las cifras de archivos excluidos y cobertura parcial se toman del registro de fallas generado durante la construcción.",
+            "Las imágenes se procesan mediante OCR únicamente cuando se activa explícitamente --enable-ocr. Los archivos omitidos quedan registrados en extraction_failures.jsonl para conservar trazabilidad.",
         ]),
         ("Embeddings, límites y caché", [
             "Se usa el mismo modelo multilingual-e5-base para pasajes y consultas, con prefijos exactos passage: y query:. Todos los embeddings se normalizan L2 antes de indexar o buscar. El dispositivo se elige explícitamente; --device cuda falla si CUDA no está disponible, y auto cae claramente a CPU.",
@@ -58,12 +58,12 @@ def main():
             "Índice: <b>faiss.IndexFlatIP</b>, escrito con faiss.write_index(). Con L2, el producto interno equivale a similitud coseno exacta. metadata.jsonl tiene una línea por vector en el mismo orden; el cargador verifica index.ntotal y la dimensión/configuración/prefijos antes de consultar.",
             f"Tiempo medido de indexación (embeddings + FAISS): {config['build_seconds']:.2f} s. Tamaño index.faiss: {index_bytes / 1024 / 1024:.1f} MiB. Metadata: {metadata_count:,} líneas. Resultados generados: {sum(1 for line in args.results.open(encoding='utf-8') if line.strip())} consultas.",
             "Se recuperan hasta 1,000 candidatos para asegurar diez salidas que respeten el límite de 250 palabras; la agregación de documentos usa max pooling y devuelve tres doc_id distintos. Los diez fragmentos conservan chunk_id para trazabilidad.",
-            "Comparación con índice anterior: anterior 171,201 chunks, 1,474 documentos cubiertos, 344.56 s de indexación y 501.6 MiB FAISS; final 208,447 chunks, 1,762 documentos cubiertos, 776.05 s y 610.7 MiB (+37,246 chunks; +288 documentos). El anterior tenía 343 fallas a nivel de archivo; el final registra 1,218 omisiones de bloque o fuente, principalmente por unidades indivisibles >480 tokens, sin perder los demás bloques del documento. La métrica de cobertura parcial anterior no fue preservada por el artefacto previo; la final es 118 documentos.",
+            "Las fallas y omisiones se conservan en extraction_failures.jsonl y no se ocultan mediante cortes arbitrarios. Los valores de esta ejecución se calculan desde el índice y el registro generado.",
         ]),
         ("Validación, errores restantes y reproducción", [
-            "Pruebas unitarias: 11 passed. Cubren selección CUDA, normalización L2, correspondencia FAISS-metadata, forma de resultados, listas completas y caché de extracción. gpu_smoke_test valida Python, PyTorch/CUDA, RTX 3060 Ti, dimensión, embeddings ES/EN/PT y búsqueda FAISS mínima.",
+            "Las pruebas unitarias cubren selección CUDA, normalización L2, correspondencia FAISS-metadata, forma de resultados, listas completas, extracción JSON y caché de extracción. gpu_smoke_test valida Python, PyTorch/CUDA, dimensión, embeddings ES/EN/PT y búsqueda FAISS mínima.",
             "Preflight de entrega valida desde cero carga FAISS, igualdad índice/metadata, esquema metadata, 50 queries ordenadas, 3 documentos, 10 fragmentos, ids existentes y máximo de 250 palabras. generador.py vuelve a cargar el índice persistido y reproduce resultados.jsonl.",
-            f"Errores restantes registrados: {failure_types.get('Una oracion excede max_tokens: requiere politica explicita, no corte automatico', 0):,} bloques mayores de 480 tokens sin frontera semántica segura; {failure_types.get('OCR omitido por defecto: active --enable-ocr solo tras verificar texto relevante', 0)} imágenes relevantes sin OCR por ausencia de Tesseract; 2 archivos de control fuera de F1/F2/F3. No se introdujo corte arbitrario para ocultar estos casos.",
+            f"Errores registrados en esta ejecución: {sum(failure_types.values()):,}. El detalle por tipo se conserva en extraction_failures.jsonl. No se introdujo corte arbitrario para ocultar unidades que no cumplen los límites.",
             "Reproducción en Windows: activar .venv, instalar dependencias y wheel CUDA de PyTorch, ejecutar scripts/gpu_smoke_test.py --device cuda, construir con scripts/build_baseline.py, y ejecutar generador.py. FAISS se usa en CPU de forma compatible; CUDA acelera los embeddings.",
         ]),
     ]
