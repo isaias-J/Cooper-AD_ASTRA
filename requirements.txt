@@ -1,2 +1,0 @@
-# Instale primero el wheel CUDA oficial indicado en README.md.
--e .
