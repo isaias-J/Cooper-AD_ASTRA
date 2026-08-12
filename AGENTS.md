@@ -52,6 +52,18 @@ Generate official results:
 python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output resultados.jsonl --device cuda
 ```
 
+Build the optional knowledge graph from the aligned metadata:
+
+```powershell
+python scripts/build_knowledge_graph.py --metadata base_vectorial/encoder_multilingual_e5_base/metadata.jsonl --output base_vectorial/grafo/grafo.graphml --min-mentions 3
+```
+
+Use the graph as non-generative evidence during result generation:
+
+```powershell
+python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --graph base_vectorial/grafo/grafo.graphml --output resultados.jsonl --device cuda
+```
+
 Render the technical report:
 
 ```powershell
@@ -61,7 +73,7 @@ python scripts/render_technical_report.py --index-dir base_vectorial/encoder_mul
 Package and validate the delivery:
 
 ```powershell
-python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --report output/informe_tecnico.pdf
+python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --graph base_vectorial/grafo/grafo.graphml --report output/informe_tecnico.pdf
 python scripts/validate_delivery.py --delivery-dir entrega
 ```
 

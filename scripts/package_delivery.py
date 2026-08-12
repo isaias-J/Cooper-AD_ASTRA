@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--index-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--out", type=Path, default=Path("entrega"))
+    parser.add_argument("--graph", type=Path, default=None)
     args = parser.parse_args()
     existing = [item for item in args.out.iterdir() if item.name != "ESTRUCTURA"] if args.out.exists() else []
     if existing:
@@ -24,6 +25,10 @@ def main():
     target = args.out / "base_vectorial" / args.index_dir.name
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(args.index_dir, target)
+    if args.graph:
+        graph_target = args.out / "base_vectorial" / "grafo"
+        graph_target.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(args.graph, graph_target / "grafo.graphml")
     shutil.copytree(Path(__file__).parents[1] / "src" / "codefest", args.out / "src" / "codefest")
 
 

@@ -8,6 +8,7 @@ from codefest.vector import l2_normalize, select_device
 from codefest.retrieval import Retriever
 from codefest.cache import ExtractionCache
 from codefest.extract import _json_blocks
+from codefest.graph import build_graph, extract_entities, graph_chunk_scores
 def test_sentence_split_preserves_terminal_sentence():
  assert sentences("Hola mundo. ¿Como estas? Tudo bem!")==["Hola mundo.","¿Como estas?","Tudo bem!"]
 def test_list_items_are_never_cut():
@@ -77,3 +78,14 @@ def test_metadata_validator_rejects_invalid_required_types(tmp_path):
     })+"\n", encoding="utf-8")
     from codefest.validate import validate_metadata
     assert any("fenomeno invalido" in error for error in validate_metadata(metadata))
+
+def test_bonus_graph_keeps_typed_relation_and_chunk_traceability():
+    records=[{"doc_id":"DOC-1", "chunk_id":"DOC-1-chunk-0000", "texto":"Colombia desarrolla inteligencia artificial para la defensa."}]
+    graph=build_graph(records)
+    assert "inteligencia artificial" in {label for label, _ in extract_entities(records[0]["texto"])}
+    assert graph.number_of_nodes() >= 2
+    assert graph.number_of_edges() >= 1
+    edge=next(iter(graph.edges(data=True)))[2]
+    assert edge["relation"] == "desarrolla"
+    assert edge["chunk_ids"] == "DOC-1-chunk-0000"
+    assert graph_chunk_scores(graph, "Como Colombia usa inteligencia artificial")

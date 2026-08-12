@@ -25,7 +25,14 @@ def main():
   index=faiss.read_index(str(index_path));
   with meta.open(encoding="utf-8") as stream: count=sum(1 for line in stream if line.strip())
   if index.ntotal != count: errors.append(f"{d}: ntotal={index.ntotal}, metadata={count}")
- if (root/"resultados.jsonl").exists(): errors += validate_results(root/"resultados.jsonl",official=True,known_chunk_ids=known_chunk_ids,known_doc_ids=known_doc_ids)
+  if (root/"resultados.jsonl").exists(): errors += validate_results(root/"resultados.jsonl",official=True,known_chunk_ids=known_chunk_ids,known_doc_ids=known_doc_ids)
+  graph_path=root/"base_vectorial"/"grafo"/"grafo.graphml"
+  if graph_path.exists():
+   import networkx as nx
+   graph=nx.read_graphml(graph_path)
+   if graph.number_of_nodes()==0 or graph.number_of_edges()==0: errors.append("Grafo GraphML vacio")
+   for _,_,attrs in graph.edges(data=True):
+    if not attrs.get("relation") or not attrs.get("chunk_ids") or not attrs.get("doc_ids"): errors.append("Grafo sin trazabilidad completa"); break
  if (root/"informe_tecnico.pdf").exists():
   import fitz
   if len(fitz.open(root/"informe_tecnico.pdf")) > 8: errors.append("informe_tecnico.pdf excede 8 paginas")
