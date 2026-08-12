@@ -14,10 +14,25 @@ KNOWN_ENTITIES = (
     "estados unidos", "unión europea", "fuerzas armadas", "fuerza aeroespacial",
     "sector defensa", "ciencia y tecnología", "desarrollo humano", "space debris",
     "low earth orbit", "artificial intelligence", "machine learning", "cybersecurity",
+    "sistemas autónomos", "sistemas no tripulados", "derecho internacional humanitario",
+    "derecho internacional", "infraestructura crítica", "guerra electrónica", "energía dirigida",
+    "capacidades contraespaciales", "sistemas satelitales", "desechos orbitales", "pruebas antisatélite",
+    "operaciones espaciales", "dominio espacial", "órbita geoestacionaria", "reabastecimiento en órbita",
+    "control territorial", "grupos armados", "crimen organizado", "economías ilícitas", "minería ilegal",
+    "narcotráfico", "reclutamiento infantil", "restitución de tierras", "recursos naturales",
+    "electronic warfare", "directed energy", "counterspace capabilities", "satellite systems",
+    "orbital debris", "anti-satellite tests", "territorial control", "organized crime", "illegal mining",
+    "drones", "semiconductores", "spoofing", "infraestructura satelital", "sistemas espaciales",
+    "capacidades láser", "capacidad nuclear antisatélite", "satélites rusos", "órbita geo",
+    "grupos criminales", "población civil", "homicidios selectivos", "rutas aéreas", "narcóticos",
+    "contrabando", "satellite infrastructure", "laser capabilities", "air routes",
 )
 STOP_ENTITIES = {
-    "El", "La", "Los", "Las", "Un", "Una", "Uno", "The", "This", "That", "These",
-    "Para", "Como", "Desde", "Entre", "Según", "También", "Sin", "Sobre", "Más",
+    "el", "la", "los", "las", "un", "una", "uno", "the", "this", "that", "these",
+    "para", "como", "cómo", "desde", "entre", "según", "también", "sin", "sobre", "más",
+    "qué", "que", "cuál", "cuáles", "quién", "quiénes", "dónde", "cuándo", "de qué manera",
+    "what", "how", "which", "who", "where", "when", "why", "como", "qual", "quais", "quem",
+    "estado", "estados", "geo",
 }
 ENTITY_RE = re.compile(r"\b(?:[A-ZÁÉÍÓÚÜÑÇÃÕ][\wÁÉÍÓÚÜÑáéíóúüñçãõ-]*)(?:\s+(?:[A-ZÁÉÍÓÚÜÑÇÃÕ][\wÁÉÍÓÚÜÑáéíóúüñçãõ-]*)){0,5}\b")
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
@@ -25,7 +40,13 @@ RELATION_RE = re.compile(
     r"\b(desarrolla|desarrollan|utiliza|utilizan|emplea|emplean|afecta|amenaza|"
     r"regula|regulan|fortalece|fortalecen|depende|depender|protege|protegen|"
     r"promueve|promueven|impacta|impactan|genera|generan|requiere|requieren|"
-    r"cooper[aá]|contribuye|contribuyen|enfrenta|enfrentan|improves?|supports?|"
+    r"cooper[aá]|contribuye|contribuyen|enfrenta|enfrentan|financia|financian|"
+    r"controla|controlan|interfiere|interfieren|obstaculiza|obstaculizan|incrementa|incrementan|"
+    r"incorpora|incorporan|transforma|transforman|despliega|despliegan|improves?|supports?|"
+    r"empleando|utilizando|desarrollando|incorporando|transformando|detecta|detectan|identifica|identifican|"
+    r"neutraliza|neutralizan|representa|representan|demuestra|demuestran|evidencia|evidencian|"
+    r"realiza|realizan|compromete|comprometen|revela|revelan|limita|limitan|aumenta|aumentan|"
+    r"busca|buscan|logra|logran|asegura|aseguran|adapta|adaptan|"
     r"threatens?|regulates?|affects?|uses?|develops?)\b",
     re.IGNORECASE,
 )
@@ -51,9 +72,14 @@ def extract_entities(text: str) -> list[tuple[str, str]]:
             start = position + len(phrase)
     for match in ENTITY_RE.finditer(text):
         label = normalize_entity(match.group(0))
-        if label and label.title() not in STOP_ENTITIES and len(label) > 2:
+        if label and label not in STOP_ENTITIES and len(label) > 2:
             entity_type = "organization" if any(token in label for token in ("universidad", "ministerio", "nato", "onu", "fuerza")) else "entity"
             found.setdefault(label, entity_type)
+    labels=sorted(found)
+    # Prefer a specific multiword entity over a generic token contained in it.
+    for label in labels:
+        if " " not in label and any(re.search(rf"\b{re.escape(label)}\b", other) for other in labels if other != label):
+            found.pop(label, None)
     return sorted(found.items())
 
 
@@ -131,4 +157,26 @@ def graph_chunk_scores(graph: nx.Graph, query: str) -> Counter:
         for chunk_id in str(attributes.get("chunk_ids", "")).split(";"):
             if chunk_id:
                 scores[chunk_id] += weight
+    return scores
+
+
+def build_graph_evidence_index(graph: nx.Graph) -> dict[str, list[tuple[tuple[str, str], int, tuple[str, ...]]]]:
+    """Pre-index edge evidence by canonical entity for fast repeated queries."""
+    evidence: defaultdict[str, list] = defaultdict(list)
+    for source, target, attributes in graph.edges(data=True):
+        chunks=tuple(item for item in str(attributes.get("chunk_ids", "")).split(";") if item)
+        weight=int(attributes.get("evidence_count", "1"))
+        for node in (source, target):
+            label=normalize_entity(str(graph.nodes[node].get("label", node)))
+            evidence[label].append(((str(source),str(target)),weight,chunks))
+    return dict(evidence)
+
+
+def indexed_graph_chunk_scores(evidence_index, query: str) -> Counter:
+    scores=Counter(); seen_edges=set()
+    for label, _ in extract_entities(query):
+        for edge_key,weight,chunks in evidence_index.get(label, ()):
+            if edge_key in seen_edges: continue
+            seen_edges.add(edge_key)
+            for chunk_id in chunks: scores[chunk_id] += weight
     return scores

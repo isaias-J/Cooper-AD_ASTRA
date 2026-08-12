@@ -51,14 +51,18 @@ python scripts/extract_queries.py --pdf "C:\ruta\Extracto_Preguntas_50_v2.pdf"
 python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output resultados.jsonl --device cuda
 ```
 
-El cargador exige que FAISS y metadata tengan el mismo número de registros y que modelo, dimensión y prefijos coincidan con `encoder_config.json`. La salida contiene top-10 chunks y tres documentos distintos.
+Si existe `base_vectorial/grafo/grafo.graphml`, el generador lo autodetecta y aplica una fusión conservadora (`--graph-weight 0.005`). Se puede desactivar para una comparación vectorial pura con `--no-graph`. El peso se seleccionó comparando similitud coseno, diversidad y trazabilidad; no se afirma una mejora de Recall sin ground truth oficial.
+
+El cargador exige que FAISS y metadata tengan el mismo número de registros y que modelo, dimensión y prefijos coincidan con `encoder_config.json`. La salida contiene top-10 chunks y tres documentos distintos. El validador también comprueba que cada `chunk_id` pertenezca al `doc_id` declarado.
 
 ## Pruebas y entrega
 
 ```powershell
 python -m pytest -q
-python scripts/render_technical_report.py --index-dir base_vectorial/encoder_multilingual_e5_base --output output/informe_tecnico.pdf
-python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --report output/informe_tecnico.pdf
+python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --no-graph --output output/resultados_baseline.jsonl --device cuda
+python generador.py --queries data/processed/queries_official.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --output output/resultados_repro.jsonl --device cuda
+python scripts/render_technical_report.py --index-dir base_vectorial/encoder_multilingual_e5_base --results resultados.jsonl --baseline-results output/resultados_baseline.jsonl --reproduction-results output/resultados_repro.jsonl --manifest data/processed/documents_manifest.jsonl --graph base_vectorial/grafo/grafo.graphml --output output/informe_tecnico.pdf
+python scripts/package_delivery.py --results resultados.jsonl --index-dir base_vectorial/encoder_multilingual_e5_base --graph base_vectorial/grafo/grafo.graphml --report output/informe_tecnico.pdf
 python scripts/validate_delivery.py --delivery-dir entrega
 ```
 

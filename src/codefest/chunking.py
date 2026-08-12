@@ -3,6 +3,7 @@ import re
 from .core import clean_text
 
 SENTENCE_RE=re.compile(r"(?<=[.!?…])(?:[\]\)\"'»”]*)\s+(?=[¿¡]?[A-ZÁÉÍÓÚÜÑÀ-Ý])")
+SENTENCE_BOUNDARY_RE=re.compile(r"(?P<closers>[\]\)\"'»”]*)\s+(?=[¿¡]?[A-ZÁÉÍÓÚÜÑÀ-Ý])")
 PARAGRAPH_RE=re.compile(r"\n\s*\n+")
 LIST_ITEM_RE=re.compile(r"^\s*(?:[-*•▪◦]|\(?\d{1,3}[.)]|[A-Za-z][.)])\s+")
 
@@ -19,7 +20,7 @@ def _split_oversized_unit(text: str, tokenizer, max_tokens: int) -> list[str]:
     if marker:
         prefix=text[:marker.end()]
         body=text[marker.end():].strip()
-        parts=[part.strip() for part in SENTENCE_RE.split(body) if part.strip()]
+        parts=_sentence_parts(body)
         if len(parts) <= 1: return []
         result=[prefix+parts[0]]+[part for part in parts[1:]]
         return result if all(_token_count(part,tokenizer)<=max_tokens for part in result) else []
@@ -52,6 +53,19 @@ def _list_units(block: str) -> list[str] | None:
     if current: items.append(" ".join(current))
     return items if items else None
 
+def _sentence_parts(block: str) -> list[str]:
+    """Split after terminal punctuation while retaining closing quotes/brackets."""
+    output=[]; start=0
+    for match in SENTENCE_BOUNDARY_RE.finditer(block):
+        prefix=block[start:match.start()]
+        if not prefix or prefix[-1] not in ".!?…":
+            continue
+        end=match.start()+len(match.group("closers"))
+        output.append(block[start:end].strip()); start=match.end()
+    tail=block[start:].strip()
+    if tail: output.append(tail)
+    return [item for item in output if item]
+
 def sentences(text: str) -> list[str]:
     """Keep complete sentences and complete structural blocks (lists/tables/headings)."""
     output=[]
@@ -64,7 +78,7 @@ def sentences(text: str) -> list[str]:
             if block.count(";") >= 2 and all(":" in piece for piece in block.split(";") if piece.strip()):
                 output.append(block.strip())
             else:
-                output.extend(sentence.strip() for sentence in SENTENCE_RE.split(block) if sentence.strip())
+                output.extend(_sentence_parts(block))
     return output
 def word_count(text:str)->int: return len(re.findall(r"\S+",text))
 def chunk_text(text: str, tokenizer, target_tokens=360, max_tokens=480, max_words=None) -> list[str]:

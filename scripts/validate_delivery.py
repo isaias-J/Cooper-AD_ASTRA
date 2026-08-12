@@ -12,7 +12,7 @@ def main():
  index_dirs=list((root/"base_vectorial").glob("encoder_*")) if (root/"base_vectorial").is_dir() else []
  errors=[f"Falta: {x}" for x in required if not x.exists()]
  if not index_dirs: errors.append("Falta al menos un base_vectorial/encoder_*")
- known_chunk_ids=set(); known_doc_ids=set()
+ known_chunk_ids=set(); known_doc_ids=set(); chunk_to_doc={}
  for d in index_dirs:
   index_path=d/"index.faiss"; meta=d/"metadata.jsonl"
   if not index_path.exists() or not meta.exists(): errors.append(f"Indice incompleto: {d}"); continue
@@ -20,12 +20,12 @@ def main():
   with meta.open(encoding="utf-8") as stream:
    for line in stream:
     if line.strip():
-     record=json.loads(line); known_chunk_ids.add(record["chunk_id"]); known_doc_ids.add(record["doc_id"])
+     record=json.loads(line); known_chunk_ids.add(record["chunk_id"]); known_doc_ids.add(record["doc_id"]); chunk_to_doc[record["chunk_id"]]=record["doc_id"]
   import faiss
   index=faiss.read_index(str(index_path));
   with meta.open(encoding="utf-8") as stream: count=sum(1 for line in stream if line.strip())
   if index.ntotal != count: errors.append(f"{d}: ntotal={index.ntotal}, metadata={count}")
-  if (root/"resultados.jsonl").exists(): errors += validate_results(root/"resultados.jsonl",official=True,known_chunk_ids=known_chunk_ids,known_doc_ids=known_doc_ids)
+  if (root/"resultados.jsonl").exists(): errors += validate_results(root/"resultados.jsonl",official=True,known_chunk_ids=known_chunk_ids,known_doc_ids=known_doc_ids,chunk_to_doc=chunk_to_doc)
   graph_path=root/"base_vectorial"/"grafo"/"grafo.graphml"
   if graph_path.exists():
    import networkx as nx

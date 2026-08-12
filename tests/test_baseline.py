@@ -8,9 +8,11 @@ from codefest.vector import l2_normalize, select_device
 from codefest.retrieval import Retriever
 from codefest.cache import ExtractionCache
 from codefest.extract import _json_blocks
-from codefest.graph import build_graph, extract_entities, graph_chunk_scores
+from codefest.graph import build_graph, extract_entities, graph_chunk_scores, build_graph_evidence_index, indexed_graph_chunk_scores
 def test_sentence_split_preserves_terminal_sentence():
  assert sentences("Hola mundo. ¿Como estas? Tudo bem!")==["Hola mundo.","¿Como estas?","Tudo bem!"]
+def test_sentence_split_preserves_closing_quote():
+ assert sentences('Primera oración.” Segunda oración.') == ['Primera oración.”', 'Segunda oración.']
 def test_list_items_are_never_cut():
  text="- Primer ítem completo.\n  Continuación del primer ítem.\n- Segundo ítem completo."
  assert sentences(text)==["- Primer ítem completo. Continuación del primer ítem.","- Segundo ítem completo."]
@@ -56,6 +58,15 @@ def test_retriever_rejects_model_mismatch(tmp_path):
  (tmp_path/"encoder_config.json").write_text(json.dumps({"model":"expected","dimension":2,"prefixes":{"passage":"passage: ","query":"query: "}}),encoding="utf-8")
  class Dummy: model_name="other"
  with pytest.raises(ValueError,match="Encoder incompatible"): Retriever(tmp_path,Dummy())
+def test_retriever_rejects_negative_graph_weight(tmp_path):
+ import faiss, pytest
+ index=faiss.IndexFlatIP(2); index.add(np.array([[1,0]],dtype=np.float32)); faiss.write_index(index,str(tmp_path/"index.faiss"))
+ (tmp_path/"metadata.jsonl").write_text(json.dumps({"doc_id":"d","chunk_id":"c","texto":"x"})+"\n",encoding="utf-8")
+ class Dummy:
+  model_name="unused"
+  def encode(self,*args,**kwargs): return np.array([[1,0]],dtype=np.float32)
+ retriever=Retriever(tmp_path,Dummy())
+ with pytest.raises(ValueError,match="graph_weight"): retriever.search("x",graph_weight=-0.1)
 def test_extraction_cache_reuses_unchanged_file(tmp_path):
  source=tmp_path/"a.txt"; source.write_text("contenido",encoding="utf-8")
  cache=ExtractionCache(tmp_path/"cache")
@@ -89,3 +100,24 @@ def test_bonus_graph_keeps_typed_relation_and_chunk_traceability():
     assert edge["relation"] == "desarrolla"
     assert edge["chunk_ids"] == "DOC-1-chunk-0000"
     assert graph_chunk_scores(graph, "Como Colombia usa inteligencia artificial")
+
+def test_graph_query_filters_question_words_and_prefers_specific_entities():
+    labels={label for label,_ in extract_entities("¿Cómo usan los Estados Unidos inteligencia artificial?")}
+    assert "cómo" not in labels and "estados" not in labels
+    assert {"estados unidos", "inteligencia artificial"}.issubset(labels)
+
+def test_indexed_graph_scores_match_reference_implementation():
+    records=[
+        {"doc_id":"DOC-1","chunk_id":"C-1","texto":"Colombia desarrolla inteligencia artificial para defensa."},
+        {"doc_id":"DOC-2","chunk_id":"C-2","texto":"Colombia utiliza inteligencia artificial en operaciones."},
+    ]
+    graph=build_graph(records)
+    query="Colombia e inteligencia artificial"
+    assert indexed_graph_chunk_scores(build_graph_evidence_index(graph),query)==graph_chunk_scores(graph,query)
+
+def test_result_validator_rejects_chunk_document_mismatch(tmp_path):
+    rows=[]
+    for i in range(1,51):
+        rows.append({"query_id":f"q{i:03d}","documents":[{"rank":j,"doc_id":str(j)} for j in range(1,4)],"fragments":[{"rank":j,"chunk_id":f"c{j}","doc_id":"wrong","text":"Texto."} for j in range(1,11)]})
+    path=tmp_path/"results.jsonl"; path.write_text("".join(json.dumps(row)+"\n" for row in rows),encoding="utf-8")
+    assert any("no corresponde" in error for error in validate_results(path,chunk_to_doc={f"c{i}":"right" for i in range(1,11)}))

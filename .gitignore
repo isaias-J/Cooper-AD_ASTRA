@@ -13,6 +13,7 @@ data/interim/
 data/processed/*.jsonl
 base_vectorial/
 output/
+tmp/
 reports/corpus_inventory.*
 reports/implementation_report.md
 .cache/

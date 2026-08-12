@@ -76,6 +76,7 @@ def build_index(chunks, out_dir:Path, encoder:Encoder, batch_size=32):
     import faiss
     out_dir.mkdir(parents=True,exist_ok=True); started=time.time(); metadata=list(chunks)
     vectors=encoder.encode([x["texto"] for x in metadata],"passage",batch_size)
+    if len(vectors) != len(metadata): raise RuntimeError("FAISS y metadata quedarian desalineados: el encoder no devolvio un vector por chunk")
     index=faiss.IndexFlatIP(vectors.shape[1]); index.add(vectors); faiss.write_index(index,str(out_dir/"index.faiss"))
     with (out_dir/"metadata.jsonl").open("w",encoding="utf-8") as f:
         for item in metadata: f.write(json.dumps(item,ensure_ascii=False)+"\n")
