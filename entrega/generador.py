@@ -41,12 +41,18 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--no-fp16", action="store_true")
     parser.add_argument("--candidates", type=int, default=1000)
-    parser.add_argument("--graph", type=Path, default=None, help="GraphML opcional para evidencia de entidades")
+    graph_group = parser.add_mutually_exclusive_group()
+    graph_group.add_argument("--graph", type=Path, default=None, help="GraphML opcional; se autodetecta junto al indice")
+    graph_group.add_argument("--no-graph", action="store_true", help="Desactiva explicitamente el grafo autodetectado")
+    parser.add_argument("--graph-weight", type=float, default=0.005, help="Aporte por evidencia del grafo (default: 0.005)")
     args = parser.parse_args()
 
     with args.queries.open(encoding="utf-8") as stream:
         queries = [json.loads(line) for line in stream if line.strip()]
-    retriever = Retriever(args.index_dir, Encoder(args.model, device=args.device, use_fp16=not args.no_fp16), args.graph)
+    graph_path=args.graph
+    automatic_graph=args.index_dir.parent / "grafo" / "grafo.graphml"
+    if graph_path is None and not args.no_graph and automatic_graph.exists(): graph_path=automatic_graph
+    retriever = Retriever(args.index_dir, Encoder(args.model, device=args.device, use_fp16=not args.no_fp16), graph_path)
     rows = []
     for query_record in queries:
         query = query_record.get("query") or query_record.get("text") or query_record.get("consulta")
@@ -58,6 +64,7 @@ def main():
             candidates=args.candidates,
             aggregation=args.aggregation,
             batch_size=args.batch_size,
+            graph_weight=args.graph_weight,
         )
         emitted = []
         for hit in hits:
@@ -85,6 +92,7 @@ def main():
         official=len(queries) == 50,
         known_chunk_ids={item["chunk_id"] for item in retriever.metadata},
         known_doc_ids={item["doc_id"] for item in retriever.metadata},
+        chunk_to_doc={item["chunk_id"]:item["doc_id"] for item in retriever.metadata},
     )
     if errors:
         raise ValueError("; ".join(errors))

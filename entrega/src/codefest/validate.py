@@ -42,7 +42,7 @@ def validate_metadata(path: Path, tokenizer=None, max_tokens=480):
     return errors
 
 
-def validate_results(path: Path, official=True, known_chunk_ids=None, known_doc_ids=None):
+def validate_results(path: Path, official=True, known_chunk_ids=None, known_doc_ids=None, chunk_to_doc=None):
     with path.open(encoding="utf-8") as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
     errors = []
@@ -68,6 +68,8 @@ def validate_results(path: Path, official=True, known_chunk_ids=None, known_doc_
                 errors.append(f"Linea {i}: chunk inexistente")
             if known_doc_ids is not None and fragment.get("doc_id") not in known_doc_ids:
                 errors.append(f"Linea {i}: documento de fragmento inexistente")
+            if chunk_to_doc is not None and chunk_to_doc.get(fragment.get("chunk_id")) != fragment.get("doc_id"):
+                errors.append(f"Linea {i}: chunk_id no corresponde al doc_id del fragmento")
         if known_doc_ids is not None and any(x.get("doc_id") not in known_doc_ids for x in docs):
             errors.append(f"Linea {i}: documento inexistente")
         if any(word_count(x.get("text", "")) > 250 for x in frags):
