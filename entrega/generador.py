@@ -41,11 +41,12 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--no-fp16", action="store_true")
     parser.add_argument("--candidates", type=int, default=1000)
+    parser.add_argument("--graph", type=Path, default=None, help="GraphML opcional para evidencia de entidades")
     args = parser.parse_args()
 
     with args.queries.open(encoding="utf-8") as stream:
         queries = [json.loads(line) for line in stream if line.strip()]
-    retriever = Retriever(args.index_dir, Encoder(args.model, device=args.device, use_fp16=not args.no_fp16))
+    retriever = Retriever(args.index_dir, Encoder(args.model, device=args.device, use_fp16=not args.no_fp16), args.graph)
     rows = []
     for query_record in queries:
         query = query_record.get("query") or query_record.get("text") or query_record.get("consulta")
