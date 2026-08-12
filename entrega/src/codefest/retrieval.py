@@ -32,7 +32,7 @@ class Retriever:
             if config.get("prefixes") != {"passage": "passage: ", "query": "query: "}:
                 raise ValueError("Prefijos del índice incompatibles")
 
-    def search(self, query, top_chunks=10, candidates=100, aggregation="max", batch_size=32, graph_weight=0.005):
+    def search(self, query, top_chunks=10, candidates=100, aggregation="max", batch_size=32, graph_weight=0.0025):
         if graph_weight < 0: raise ValueError("graph_weight no puede ser negativo")
         scores, ids = self.index.search(
             self.encoder.encode([query], "query", batch_size=batch_size),
