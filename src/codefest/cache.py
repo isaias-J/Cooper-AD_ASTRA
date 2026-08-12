@@ -29,22 +29,33 @@ class ExtractionCache:
         except FileNotFoundError:
             self.index = {}
 
-    def get(self, path: Path, cache_key: str):
+    @staticmethod
+    def _index_key(cache_key: str, variant: str) -> str:
+        return cache_key if variant == "default" else f"{variant}\0{cache_key}"
+
+    def get(self, path: Path, cache_key: str, variant: str = "default"):
         stat = path.stat()
-        entry = self.index.get(cache_key)
+        entry = self.index.get(self._index_key(cache_key, variant))
         if entry and entry["size"] == stat.st_size and entry["mtime_ns"] == stat.st_mtime_ns:
-            payload = self.root / f"{entry['sha256']}.json"
+            payload = self.root / f"{entry.get('payload_sha256', entry['sha256'])}.json"
             if payload.exists():
                 return json.loads(payload.read_text(encoding="utf-8")), True
         return None, False
 
-    def put(self, path: Path, cache_key: str, payload: dict) -> str:
+    def put(self, path: Path, cache_key: str, payload: dict, variant: str = "default") -> str:
         digest = sha256_file(path)
-        destination = self.root / f"{digest}.json"
+        payload_digest = hashlib.sha256(f"{digest}\0{variant}".encode("utf-8")).hexdigest()
+        destination = self.root / f"{payload_digest}.json"
         if not destination.exists():
             destination.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         stat = path.stat()
-        self.index[cache_key] = {"sha256": digest, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+        self.index[self._index_key(cache_key, variant)] = {
+            "sha256": digest,
+            "payload_sha256": payload_digest,
+            "variant": variant,
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        }
         self.index_path.write_text(json.dumps(self.index, ensure_ascii=False, indent=2), encoding="utf-8")
         return digest
 

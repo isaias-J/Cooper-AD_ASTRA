@@ -1,0 +1,4 @@
+# Figuras con texto analitico verificadas visualmente. Rutas relativas al corpus.
+F2_Seguridad_Entorno_Espacial/SWF_Counterspace/swf_counterspace_2026/images/SWF_69cac182eba666b43b38e5dd-table-5-1-web.jpg
+F2_Seguridad_Entorno_Espacial/SWF_Counterspace/swf_counterspace_2026/images/SWF_69caf750b6a0fce65862de8a-stoplight-chart-execsummary-web.jpg
+F2_Seguridad_Entorno_Espacial/SWF_Counterspace/swf_counterspace_2026/images/SWF_6a063f3ccaf9f32a290430b9-asat-by-country-2026.jpg

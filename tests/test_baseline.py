@@ -7,7 +7,7 @@ from codefest.validate import validate_results
 from codefest.vector import l2_normalize, select_device
 from codefest.retrieval import Retriever
 from codefest.cache import ExtractionCache
-from codefest.extract import _json_blocks
+from codefest.extract import _json_blocks, _ocr_image_blocks, remove_repeated_ocr_blocks
 from codefest.graph import build_graph, extract_entities, graph_chunk_scores, build_graph_evidence_index, indexed_graph_chunk_scores
 def test_sentence_split_preserves_terminal_sentence():
  assert sentences("Hola mundo. ¿Como estas? Tudo bem!")==["Hola mundo.","¿Como estas?","Tudo bem!"]
@@ -74,6 +74,40 @@ def test_extraction_cache_reuses_unchanged_file(tmp_path):
  cache.put(source,"a.txt",payload)
  restored, hit=cache.get(source,"a.txt")
  assert hit and restored==payload
+
+def test_extraction_cache_separates_ocr_variants(tmp_path):
+ source=tmp_path/"scan.pdf"; source.write_bytes(b"same-content")
+ cache=ExtractionCache(tmp_path/"cache")
+ native={"blocks":[],"metadata":{"ocr_applied":False}}
+ ocr={"blocks":[{"text":"Texto recuperado.","metadata":{"ocr_applied":True}}],"metadata":{}}
+ cache.put(source,"scan.pdf",native)
+ cache.put(source,"scan.pdf",ocr,variant="ocr-spa-250")
+ assert cache.get(source,"scan.pdf")[0]==native
+ assert cache.get(source,"scan.pdf",variant="ocr-spa-250")[0]==ocr
+
+def test_ocr_groups_lines_and_filters_low_confidence(tmp_path,monkeypatch):
+ import pytesseract
+ command=tmp_path/"tesseract.exe"; command.write_bytes(b"")
+ data={
+  "text":["Texto","válido","ruido"],"conf":["95","85","20"],
+  "block_num":[1,1,2],"par_num":[1,1,1],"line_num":[1,1,1],
+ }
+ monkeypatch.setattr(pytesseract,"image_to_data",lambda *args,**kwargs:data)
+ blocks=_ocr_image_blocks(object(),languages="spa",command=command,tessdata_dir=None,psm=3,min_confidence=60)
+ assert [text for text,_ in blocks]==["Texto válido"]
+ assert blocks[0][1]["ocr_confidence"]==90.0
+
+def test_repeated_ocr_boilerplate_is_removed_without_touching_body():
+ blocks=[]
+ for page in range(1,7):
+  blocks.extend([
+   {"text":f"Página {page} de 6","metadata":{"ocr_engine":"tesseract-5","page_start":page,"page_end":page}},
+   {"text":f"Contenido analítico exclusivo de la página {page}.","metadata":{"ocr_engine":"tesseract-5","page_start":page,"page_end":page}},
+  ])
+ result=remove_repeated_ocr_blocks({"blocks":blocks,"metadata":{}})
+ assert len(result["blocks"])==6
+ assert all("Contenido analítico" in block["text"] for block in result["blocks"])
+ assert result["metadata"]["removed_repeated_ocr_blocks"]==6
 
 def test_json_paragraph_arrays_are_extracted_in_order():
     value={"title":"Titulo", "body_paragraphs":["Primero.", "Segundo."], "nested":{"text":"Tercero."}}

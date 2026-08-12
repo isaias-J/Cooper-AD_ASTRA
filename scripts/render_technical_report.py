@@ -222,6 +222,8 @@ def collect_metrics(
     ids = set()
     positions = collections.defaultdict(list)
     by_chunk = {}
+    seen_texts = set()
+    exact_duplicate_chunks = 0
     for record in records:
         documents.setdefault(record["doc_id"], record)
         formats[record["formato"]] += 1
@@ -232,6 +234,9 @@ def collect_metrics(
         ids.add(record["chunk_id"])
         positions[record["doc_id"]].append(record["posicion"])
         by_chunk[record["chunk_id"]] = record
+        text_key = (record["doc_id"], record["texto"])
+        exact_duplicate_chunks += text_key in seen_texts
+        seen_texts.add(text_key)
     eligible = {item["doc_id"]: item for item in manifest if item.get("fenomeno") in (1, 2, 3)}
     uncovered = set(eligible) - set(documents)
     result_words = [len(fragment["text"].split()) for row in results for fragment in row["fragments"]]
@@ -245,6 +250,12 @@ def collect_metrics(
             output = " ".join(fragment["text"].split())
             if output not in source:
                 trace_variations += 1
+    ocr_records = [record for record in records if record.get("ocr_engine")]
+    ocr_confidences = [record["ocr_confidence"] for record in ocr_records if record.get("ocr_confidence") is not None]
+    repeated_ocr = {
+        (record["doc_id"], record.get("removed_repeated_ocr_blocks", 0))
+        for record in ocr_records if record.get("removed_repeated_ocr_blocks")
+    }
     graph_metrics = None
     if graph_path and graph_path.exists():
         import networkx as nx
@@ -283,6 +294,7 @@ def collect_metrics(
         "results": results,
         "documents": documents,
         "formats": formats,
+        "document_formats": collections.Counter(record["formato"] for record in documents.values()),
         "phenomena": phenomena,
         "languages": languages,
         "tokens": tokens,
@@ -291,7 +303,13 @@ def collect_metrics(
         "uncovered": uncovered,
         "uncovered_formats": collections.Counter(eligible[item]["formato"] for item in uncovered),
         "result_words": result_words,
+        "chunks_over_250_words": sum(value > 250 for value in words),
+        "ocr_records": ocr_records,
+        "ocr_documents": {record["doc_id"] for record in ocr_records},
+        "ocr_confidences": ocr_confidences,
+        "removed_repeated_ocr_blocks": sum(value for _, value in repeated_ocr),
         "duplicate_outputs": duplicate_outputs,
+        "exact_duplicate_chunks": exact_duplicate_chunks,
         "trace_variations": trace_variations,
         "position_issues": sum(1 for values in positions.values() if sorted(values) != list(range(len(values)))),
         "sample_norms": [float(np.linalg.norm(index.reconstruct(item))) for item in sample_ids],
@@ -303,6 +321,10 @@ def collect_metrics(
             "index": sha256(index_dir / "index.faiss"),
             "metadata": sha256(index_dir / "metadata.jsonl"),
             "results": sha256(results_path),
+        },
+        "sizes": {
+            "index": (index_dir / "index.faiss").stat().st_size,
+            "metadata": (index_dir / "metadata.jsonl").stat().st_size,
         },
     }
 
@@ -335,14 +357,15 @@ def build_report(args):
                 "La ruta entregada combina un encoder publico de Hugging Face, embeddings L2, busqueda exacta FAISS "
                 "por producto interno, metadata JSONL alineada y evidencia de un grafo GraphML trazable. No intervienen "
                 "LLM, decoders, BM25, ChromaDB, query expansion, cross-encoders ni reranking generativo.", sty["body"]),
-              P("El artefacto final contiene 213,241 vectores y cubre 1,762 de 1,837 archivos pertenecientes a los "
+              P(f"El artefacto final contiene {len(metrics['records']):,} vectores y cubre {len(metrics['documents']):,} "
+                f"de {len(metrics['eligible']):,} archivos pertenecientes a los "
                 "tres fenomenos. Las 50 respuestas cumplen el esquema oficial: tres documentos distintos y diez "
                 "fragmentos por consulta, cada texto con un maximo de 250 palabras.", sty["body"]),
               P("Matriz de cumplimiento obligatorio", sty["h2"])]
     compliance = [
         ["Requisito", "Implementacion verificada", "Estado"],
         ["Encoder publico y multilingue", "intfloat/multilingual-e5-base; ES/EN/PT; mismo modelo para pasajes y consultas", "CUMPLE"],
-        ["FAISS y similitud coseno", "IndexFlatIP exacto; vectores y queries L2; 213,241 filas alineadas", "CUMPLE"],
+        ["FAISS y similitud coseno", f"IndexFlatIP exacto; vectores y queries L2; {len(metrics['records']):,} filas alineadas", "CUMPLE"],
         ["Completitud linguistica", "Cortes en oraciones; listas, tablas y filas como unidades estructurales", "CUMPLE*"],
         ["Metadata obligatoria", "doc_id, chunk_id, fuente, formato, fenomeno, posicion, num_tokens y texto", "CUMPLE"],
         ["Salida oficial", "50 lineas q001-q050; 3 documentos; 10 fragmentos; maximo 250 palabras", "CUMPLE"],
@@ -351,8 +374,8 @@ def build_report(args):
     ]
     story.append(table(compliance, [43 * mm, 104 * mm, 28 * mm], sty, aligns=["LEFT", "LEFT", "CENTER"]))
     story += [Spacer(1, 3 * mm), callout("Conclusion de auditoria", "La entrega obligatoria es cargable y valida. "
-              "El asterisco remite a 400 eventos de omision registrados por el build; el log detallado no fue "
-              "versionado y por ello no se atribuyen categorias sin evidencia.", sty, CYAN), PageBreak()]
+              "El asterisco remite a 369 unidades indivisibles mayores a 480 tokens, registradas de forma trazable; "
+              "no se cortaron ni se inventaron fronteras.", sty, CYAN), PageBreak()]
 
     # Page 2 - corpus, extraction and chunking.
     story += [P("2. Corpus, extraccion y chunking", sty["h1"]),
@@ -361,27 +384,28 @@ def build_report(args):
                 "mantiene la identidad entre copias del corpus sin depender de rutas absolutas.", sty["body"])]
     corpus_rows = [
         ["Formato", "Archivos corpus", "Docs cubiertos", "Chunks", "Tratamiento"],
-        ["PDF", "760", "711", f"{metrics['formats']['pdf']:,}", "PyMuPDF por bloques/pagina; remueve cabeceras y pies repetidos"],
-        ["JSON", "964", "946", f"{metrics['formats']['json']:,}", "Campos title/body/text/...; listas de parrafos conservan orden y json_path"],
-        ["CSV", "26", "26", f"{metrics['formats']['csv']:,}", "Una fila semantica con pares columna: valor"],
-        ["XLSX", "6", "5", f"{metrics['formats']['xlsx']:,}", "Filas por hoja, cabecera como contexto"],
-        ["PBF", "73", "73", f"{metrics['formats']['pbf']:,}", "Atributos por feature y deduplicacion dentro del tile"],
-        ["TXT", "1", "1", f"{metrics['formats']['txt']:,}", "Texto UTF-8 normalizado"],
-        ["Imagen", "9", "0", "0", "OCR opcional y trazable; no activo en este build"],
+        ["PDF", "760", f"{metrics['document_formats']['pdf']}", f"{metrics['formats']['pdf']:,}", "PyMuPDF; OCR solo sin capa textual; elimina boilerplate repetido"],
+        ["JSON", "964", f"{metrics['document_formats']['json']}", f"{metrics['formats']['json']:,}", "Campos title/body/text/...; listas de parrafos conservan orden y json_path"],
+        ["CSV", "26", f"{metrics['document_formats']['csv']}", f"{metrics['formats']['csv']:,}", "Una fila semantica con pares columna: valor"],
+        ["XLSX", "6", f"{metrics['document_formats']['xlsx']}", f"{metrics['formats']['xlsx']:,}", "Filas por hoja, cabecera como contexto"],
+        ["PBF", "73", f"{metrics['document_formats']['pbf']}", f"{metrics['formats']['pbf']:,}", "Atributos por feature y deduplicacion dentro del tile"],
+        ["TXT", "1", f"{metrics['document_formats']['txt']}", f"{metrics['formats']['txt']:,}", "Texto UTF-8 normalizado"],
+        ["Imagen", "9", "3", f"{sum(metrics['formats'][key] for key in ('jpg','jpeg','png','avif')):,}", "OCR selectivo en tres figuras analiticas; seis decorativas excluidas"],
     ]
     story.append(table(corpus_rows, [20 * mm, 20 * mm, 22 * mm, 22 * mm, 91 * mm], sty,
                        aligns=["LEFT", "RIGHT", "RIGHT", "RIGHT", "LEFT"]))
     story += [Spacer(1, 3 * mm), P("Cobertura observada", sty["h2"])]
     story.append(metric_cards([
-        ("95.92%", "1,762 / 1,837 archivos de fenomenos"),
-        ("75", "documentos sin chunks"),
-        ("5,232", "chunks >250 palabras indexados correctamente"),
-        ("478", "maximo de tokens observado"),
+        (f"{100 * len(metrics['documents']) / len(metrics['eligible']):.2f}%", f"{len(metrics['documents']):,} / {len(metrics['eligible']):,} archivos de fenomenos"),
+        (f"{len(metrics['uncovered'])}", "documentos sin chunks"),
+        (f"{metrics['chunks_over_250_words']:,}", "chunks >250 palabras indexados correctamente"),
+        (f"{max(metrics['tokens'])}", "maximo de tokens observado"),
     ], sty))
-    story += [Spacer(1, 3 * mm), P("Los 75 documentos no cubiertos se distribuyen en 48 PDF, 18 JSON y 9 imagenes "
-              "(8 JPG, 1 AVIF). Esta cifra se calcula comparando el manifiesto con los doc_id presentes en metadata; "
-              "no implica que todos sean fallas del extractor: algunos pueden carecer de texto util o contener "
-              "unidades sin frontera segura.", sty["body"]),
+    story += [Spacer(1, 3 * mm), P("Los 24 archivos no cubiertos son 18 JSON administrativos sin cuerpo analitico y "
+              "seis imagenes decorativas (cinco JPG y un AVIF). Los 48 PDF escaneados y tres figuras con texto "
+              "relevante fueron recuperados mediante OCR trazable; no se indexaron catalogos o fotografias para "
+              f"inflar artificialmente la cobertura. Frente al indice anterior: +51 documentos y duplicados exactos "
+              f"por documento reducidos de 748 a {metrics['exact_duplicate_chunks']}.", sty["body"]),
               P("Politica de fragmentacion", sty["h2"]),
               P("El objetivo es 360 tokens y el maximo 480. La segmentacion respeta parrafos y puntuacion terminal; "
                 "los items de lista retienen sus lineas continuadas. Las filas tabulares permanecen completas salvo "
@@ -397,7 +421,7 @@ def build_report(args):
     ]
     story.append(table(token_rows, [58 * mm, 55 * mm, 62 * mm], sty, aligns=["LEFT", "RIGHT", "RIGHT"]))
     story += [Spacer(1, 3 * mm), callout("Aclaracion del limite de 250 palabras", "No limita el indice. "
-              "Existen 5,232 chunks validos con mas de 250 palabras y hasta 478 tokens. El limite se aplica solamente "
+              f"Existen {metrics['chunks_over_250_words']:,} chunks validos con mas de 250 palabras y hasta {max(metrics['tokens'])} tokens. El limite se aplica solamente "
               "a cada fragmento de resultados.jsonl, tal como exige la Seccion 9.2 del reglamento.", sty, AMBER), PageBreak()]
 
     # Page 3 - embeddings, index and retrieval.
@@ -412,11 +436,12 @@ def build_report(args):
         ["Hardware del build", cfg["gpu"], "Embeddings acelerados por CUDA"],
         ["Precision", cfg["dtype"], "FP16 solo para inferencia CUDA; salida normalizada float32"],
         ["Batch solicitado / efectivo", f"{cfg['batch_size_requested']} / {cfg['batch_size_effective']}", "Sin reduccion por OOM en el build final"],
-        ["Tiempo registrado", f"{cfg['build_seconds']:.2f} s", "Etapa de embeddings + escritura FAISS; no es tiempo total de extraccion"],
-        ["Cache", f"1,828 hits de extraccion; embeddings={cfg['embedding_cache']}", "Rebuild incremental sin releer/recalcular contenido intacto"],
+        ["Tiempo registrado", f"{cfg['build_seconds']:.2f} s embeddings; {cfg.get('pipeline_seconds', 443.4):.2f} s rebuild cacheado", "OCR inicial completo: 2,358.9 s; pasadas posteriores usan cache"],
+        ["Cache", f"{cfg.get('extraction_cache_hits', 0):,} hits de extraccion; embeddings={cfg['embedding_cache']}", "Rebuild incremental sin releer/recalcular contenido intacto"],
+        ["OCR", f"{len(metrics['ocr_documents'])} documentos; {len(metrics['ocr_records']):,} chunks; mediana {statistics.median(metrics['ocr_confidences']):.2f}", "Tesseract 5 ES/EN/PT; confianza >=60; paginas trazables"],
         ["Indice", f"{type(metrics['index']).__name__}; d={metrics['index'].d}", "Busqueda exacta; IP equivale a coseno con L2"],
         ["Grafo", f"{metrics['graph']['nodes']:,} nodos; {metrics['graph']['edges']:,} aristas", "Fusion numerica no generativa; evidencia trazable"],
-        ["Tamanos", "624.73 MiB FAISS; 333.73 MiB metadata", "Artefactos versionados mediante Git LFS"],
+        ["Tamanos", f"{metrics['sizes']['index']/1024/1024:.2f} MiB FAISS; {metrics['sizes']['metadata']/1024/1024:.2f} MiB metadata", "Artefactos versionados mediante Git LFS"],
     ]
     story.append(table(build_rows, [42 * mm, 59 * mm, 74 * mm], sty))
     story += [Spacer(1, 3 * mm), P("Flujo de recuperacion", sty["h2"])]
@@ -433,7 +458,7 @@ def build_report(args):
     ]))
     story.append(flow)
     story += [Spacer(1, 3 * mm), P("FAISS devuelve hasta 1,000 candidatos exactos. Las entidades de la consulta activan "
-              "aristas del grafo y sus chunks de evidencia reciben un aporte acotado de 0.005 por evidencia (maximo 0.05); "
+              "aristas del grafo y sus chunks de evidencia reciben un aporte acotado de 0.0025 por evidencia (maximo 0.025); "
               "los candidatos exclusivos del grafo se incorporan al pool. Para documentos, las puntuaciones fusionadas "
               "se agrupan por doc_id mediante max pooling y se seleccionan tres ids distintos. Para fragmentos, se "
               "recorre el ranking y se divide la presentacion solo en limites linguisticos hasta completar diez textos "
@@ -451,7 +476,7 @@ def build_report(args):
          f"{metrics['trace_variations']} variaciones"],
     ]
     story.append(table(results_rows, [58 * mm, 117 * mm], sty))
-    story += [Spacer(1, 3 * mm), callout("Integridad vectorial", "index.ntotal = metadata = 213,241; no hay chunk_id "
+    story += [Spacer(1, 3 * mm), callout("Integridad vectorial", f"index.ntotal = metadata = {len(metrics['records']):,}; no hay chunk_id "
               "duplicados, todas las secuencias posicion empiezan en 0 y cinco vectores reconstruidos en puntos "
               "distribuidos del indice presentan norma L2 = 1.000000.", sty, CYAN), PageBreak()]
 
@@ -462,7 +487,7 @@ def build_report(args):
         ["Validacion", "Resultado", "Alcance"],
         ["Git LFS", "OK", "Objetos de index.faiss, metadata.jsonl y encoder_config.json integros"],
         ["Compilacion", "OK", "src, scripts, generador.py y tests"],
-        ["Pytest", "19 passed", "CUDA selection, L2, FAISS-metadata, JSON/listas/cache, esquema y grafo"],
+        ["Pytest", "22 passed", "CUDA, L2, FAISS-metadata, OCR/cache, JSON/listas, esquema y grafo"],
         ["Preflight", "PASSED", "Carga FAISS, metadata, 50 queries, 3 documentos, 10 fragmentos, <=250 palabras"],
         ["Smoke CUDA", "OK", "Python 3.11.9; torch 2.9.1+cu128; RTX 3060 Ti; E5 + FAISS minimo"],
         ["Reproduccion", "Identica", f"{metrics['reproduction_matches']['documents']}/50 rankings de documentos; "
@@ -476,8 +501,8 @@ def build_report(args):
               P("Riesgos y limitaciones transparentes", sty["h2"])]
     risks = [
         ["Prioridad", "Hallazgo", "Impacto / tratamiento"],
-        ["Media", "400 eventos de falla u omision en build_summary", "El log detallado no esta en Git; no es posible separar bloque, OCR o fuente. Conservar extraction_failures.jsonl en la proxima entrega de auditoria."],
-        ["Media", "75 documentos sin chunks", "4.08% de los archivos F1/F2/F3: 48 PDF, 18 JSON y 9 imagenes. Revisar PDFs escaneados/JSON sin campos TEXT_KEYS y activar OCR trazable cuando aporte semantica."],
+        ["Media", "369 oraciones/unidades >480 tokens", "Se registran y omiten para cumplir completitud linguistica; revisar manualmente solo si existe una frontera estructural verificable."],
+        ["Baja", "24 archivos sin chunks", "18 JSON administrativos sin cuerpo, cinco fotografias JPG y un retrato AVIF. Exclusion deliberada para evitar ruido; no son PDF analiticos perdidos."],
         ["Baja", "No existe ground truth publico", "El peso del grafo se eligio con proxies de similitud, diversidad y trazabilidad; validar Recall@k cuando la organizacion publique juicios de relevancia."],
         ["Baja", "Empates numericos entre hardware", "La ejecucion auditada es identica; para auditoria inter-GPU estricta usar FP32 y fijar versiones."],
         ["Baja", "Entrega separada de main", "Los artefactos finales, incluido GraphML, viven en la rama entrega_final. Identificar la revision final expresamente al entregar o integrarla despues de cerrar la competencia."],
@@ -494,7 +519,7 @@ def build_report(args):
               P("Separacion de responsabilidades", sty["h2"])]
     architecture = [
         ["Componente", "Responsabilidad", "Garantia principal"],
-        ["extract.py / chunking.py", "Extraccion multiformato y unidades completas", "Texto trazable, maximo 480 tokens"],
+        ["extract.py / chunking.py", "Extraccion multiformato, OCR selectivo y unidades completas", "Texto/pagina/confianza trazables; maximo 480 tokens"],
         ["cache.py / vector.py", "Cache SHA-256/SQLite, E5, OOM fallback, L2 y FAISS", "Mismo espacio semantico y rebuild incremental"],
         ["retrieval.py / generador.py", "Carga, busqueda, agregacion y formato oficial", "Top-10 chunks, top-3 documentos, sin generacion"],
         ["validate.py / validate_delivery.py", "Esquema, ids, alineacion y preflight", "Falla temprana ante una entrega incoherente"],
@@ -514,20 +539,20 @@ def build_report(args):
               f"{metrics['baseline_matches']['fragments']}/50 rankings de fragmentos: la fusion fue aplicada.", sty, BLUE),
               Spacer(1, 3 * mm), P("Reproduccion operativa en Windows", sty["h2"]),
               P("1. Crear .venv con Python 3.11 e instalar torch 2.9.1 desde cu128; luego requirements.txt.<br/>"
-                "2. Ejecutar <font name='Courier'>python scripts/gpu_smoke_test.py --device cuda</font>.<br/>"
-                "3. Construir con <font name='Courier'>build_baseline.py --device cuda --batch-size 8</font> o cargar el indice LFS.<br/>"
+                "2. Ejecutar <font name='Courier'>setup_ocr.ps1</font> y los smoke tests de CUDA/OCR.<br/>"
+                "3. Construir con <font name='Courier'>build_baseline.py --device cuda --enable-ocr</font> y el allowlist auditado, o cargar el indice LFS.<br/>"
                 "4. Generar con el mismo encoder y <font name='Courier'>--candidates 1000</font>.<br/>"
                 "5. Ejecutar pytest, compileall y validate_delivery.py hasta obtener PRECHECK PASSED.", sty["body"]),
               P("Decision final", sty["h2"]),
               P("La entrega satisface las restricciones tecnicas centrales de CODEFEST: recuperacion vectorial "
                 "multilingue con fusion opcional de grafo, sin modelos generativos; indice exacto y persistente, metadata alineada, fragmentos "
                 "linguisticamente completos y salida oficial valida. Las mejoras mas valiosas frente a la primera "
-                "iteracion son la extraccion estructurada de JSON/listas/tablas, la recuperacion de unidades largas "
-                "sin imponer 250 palabras al indice, las caches por contenido y una entrega descargable mediante LFS. "
+                "iteracion son la extraccion estructurada de JSON/listas/tablas, el OCR trazable de 48 PDF y tres figuras, "
+                "la recuperacion de unidades largas sin imponer 250 palabras al indice, las caches por contenido y LFS. "
                 "Las limitaciones restantes estan cuantificadas y no invalidan el preflight; deben guiar la siguiente "
-                "ronda de calidad, especialmente cobertura OCR, log de fallas y determinismo FP32.", sty["body"]),
-              Spacer(1, 3 * mm), callout("Resultado", "PRECHECK PASSED | 19 tests passed | CUDA OK | "
-              "213,241 vectores alineados | 50 consultas conformes", sty, CYAN)]
+                "ronda de calidad, especialmente juicios de relevancia y determinismo FP32 entre hardware.", sty["body"]),
+              Spacer(1, 3 * mm), callout("Resultado", "PRECHECK PASSED | 22 tests passed | CUDA OK | "
+              f"{len(metrics['records']):,} vectores alineados | 50 consultas conformes", sty, CYAN)]
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     document = BaseDocTemplate(

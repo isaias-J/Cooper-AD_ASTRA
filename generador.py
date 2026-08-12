@@ -44,7 +44,7 @@ def main():
     graph_group = parser.add_mutually_exclusive_group()
     graph_group.add_argument("--graph", type=Path, default=None, help="GraphML opcional; se autodetecta junto al indice")
     graph_group.add_argument("--no-graph", action="store_true", help="Desactiva explicitamente el grafo autodetectado")
-    parser.add_argument("--graph-weight", type=float, default=0.005, help="Aporte por evidencia del grafo (default: 0.005)")
+    parser.add_argument("--graph-weight", type=float, default=0.0025, help="Aporte por evidencia del grafo (default: 0.0025)")
     args = parser.parse_args()
 
     with args.queries.open(encoding="utf-8") as stream:

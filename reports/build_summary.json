@@ -1,7 +1,7 @@
 {
-  "chunks": 213241,
-  "failures": 400,
-  "extraction_cache_hits": 1828,
+  "chunks": 211485,
+  "failures": 395,
+  "extraction_cache_hits": 1831,
   "encoder": {
     "model": "intfloat/multilingual-e5-base",
     "requested_device": "cuda",
@@ -16,12 +16,25 @@
       "query": "query: "
     },
     "cuda_available": true,
-    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
-    "platform": "Windows-11-10.0.26200-SP0",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "platform": "Windows-10-10.0.26200-SP0",
     "embedding_cache": true,
-    "chunks": 213241,
-    "batch_size_requested": 8,
-    "batch_size_effective": 8,
-    "build_seconds": 64.68
+    "chunks": 211485,
+    "batch_size_requested": 16,
+    "batch_size_effective": 16,
+    "build_seconds": 15.57,
+    "pipeline_seconds": 443.4,
+    "ocr_initial_seconds": 2358.9,
+    "target_tokens": 360,
+    "max_tokens": 480,
+    "extraction_cache_hits": 1831,
+    "ocr": {
+      "enabled": true,
+      "engine": "tesseract-5",
+      "languages": "spa+eng+por",
+      "dpi": 250,
+      "minimum_confidence": 60.0,
+      "image_allowlist": "config\\ocr_image_allowlist.txt"
+    }
   }
 }
