@@ -1,26 +1,30 @@
 # CODEFEST AD ASTRA 2026
 
-This repository is organized in two branches:
+Este repositorio está organizado en dos ramas:
 
-- `main` / `entrega_final`: final delivery package.
-- `implementacion-completa`: complete source code, tests, build scripts, and corpus workflow.
+- `main` / `entrega_final`: paquete final para entregar.
+- `implementacion-completa`: código fuente completo, pruebas, scripts y flujo de construcción.
 
-Git does not allow spaces in branch names, so `implementacion-completa` is the valid form of `implementacion completa`.
+Git no permite espacios en los nombres de ramas. Por eso se usa
+`implementacion-completa` en lugar de `implementacion completa`.
 
-## Final Delivery
+## Entrega Final
 
-The folder to submit is `entrega/`. It contains the required JSONL results,
-reproducible generator, technical PDF, FAISS index, metadata, and optional
-GraphML bonus. The `src/` directory inside `entrega/` is included because the
-generator imports it when executed from the delivery folder.
+La carpeta que se debe entregar es `entrega/`. Contiene los resultados JSONL,
+el generador reproducible, el informe técnico, el índice FAISS, la metadata y
+el grafo GraphML del bonus.
 
-The root `.gitattributes` is required by Git LFS for the large FAISS and
-metadata files. The root `.gitignore` prevents local corpora, caches, models,
-and generated files from being committed. Keep both files at repository root.
+El directorio `src/` dentro de `entrega/` se incluye porque `generador.py` lo
+necesita para ejecutarse directamente desde la carpeta de entrega.
 
-## Continue On NVIDIA PC
+El archivo `.gitattributes` en la raíz es necesario para Git LFS, que gestiona
+los archivos grandes del índice FAISS y la metadata. El archivo `.gitignore`
+evita subir corpus, cachés, modelos y archivos generados localmente. Ambos
+deben permanecer en la raíz del repositorio.
 
-Clone the delivery branch with Git LFS:
+## Continuar En Un PC Con NVIDIA
+
+Clona la rama de entrega usando Git LFS:
 
 ```powershell
 git lfs install
@@ -28,7 +32,7 @@ git clone -b entrega_final https://github.com/isaias-J/Cooper-AD_ASTRA.git
 cd Cooper-AD_ASTRA
 ```
 
-Use Python 3.11 and an NVIDIA driver:
+Usa Python 3.11 y un controlador NVIDIA instalado:
 
 ```powershell
 py -3.11 -m venv .venv
@@ -38,7 +42,7 @@ python -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/
 python -m pip install faiss-cpu==1.12.0 sentence-transformers==5.1.0 networkx==3.5 numpy
 ```
 
-Verify CUDA and the downloaded LFS files:
+Verifica CUDA y los archivos descargados mediante Git LFS:
 
 ```powershell
 nvidia-smi
@@ -46,10 +50,10 @@ git lfs pull
 python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-## Reproduce Results
+## Reproducir Resultados
 
-The official query file is supplied separately by the organizers. It must
-contain exactly `q001` through `q050` in JSONL format. From the repository root:
+El archivo oficial de consultas es suministrado por los organizadores. Debe
+contener exactamente `q001` hasta `q050` en formato JSONL. Desde la raíz:
 
 ```powershell
 python entrega/generador.py `
@@ -61,20 +65,21 @@ python entrega/generador.py `
   --batch-size 16
 ```
 
-The graph is optional bonus evidence. It uses deterministic entity and
-relation extraction and does not use a generative model.
+El grafo es el componente bonus opcional. Usa extracción determinista de
+entidades y relaciones, sin modelos generativos.
 
-## Complete Implementation Workflow
+## Flujo De Implementación Completa
 
-For rebuilding the index from the full corpus, switch to the complete branch:
+Para reconstruir el índice desde el corpus completo, cambia a la rama de
+implementación:
 
 ```powershell
 git switch implementacion-completa
 git pull
 ```
 
-Keep the extracted corpus outside Git, preferably at the repository root with
-the name `CORPUS CODEFEST AD ASTRA 2026`:
+Mantén el corpus descomprimido fuera de Git, preferiblemente en la raíz del
+repositorio con el nombre `CORPUS CODEFEST AD ASTRA 2026`:
 
 ```powershell
 python scripts/build_baseline.py `
@@ -83,7 +88,7 @@ python scripts/build_baseline.py `
   --batch-size 16
 ```
 
-Build the bonus graph:
+Construye el grafo bonus:
 
 ```powershell
 python scripts/build_knowledge_graph.py `
@@ -92,7 +97,7 @@ python scripts/build_knowledge_graph.py `
   --min-mentions 3
 ```
 
-Generate graph-aware results, render the report, package, and validate:
+Genera resultados usando el grafo, crea el informe, empaqueta y valida:
 
 ```powershell
 python generador.py --queries data\processed\queries_official.jsonl --index-dir base_vectorial\encoder_multilingual_e5_base --graph base_vectorial\grafo\grafo.graphml --output resultados.jsonl --device cuda
@@ -101,14 +106,14 @@ python scripts/package_delivery.py --results resultados.jsonl --index-dir base_v
 python scripts/validate_delivery.py --delivery-dir entrega
 ```
 
-The final validator must print `PRECHECK PASSED`.
+El validador debe mostrar `PRECHECK PASSED`.
 
-## Tests
+## Pruebas
 
 ```powershell
 python -m pytest -q
 python -m compileall -q src scripts generador.py tests
 ```
 
-Do not commit the corpus, `.cache`, model files, FAISS build outputs, Python
-caches, or temporary reports. The root `.gitignore` excludes these artifacts.
+No subas el corpus, `.cache`, modelos, índices generados, cachés de Python ni
+reportes temporales. El `.gitignore` de la raíz excluye esos archivos.

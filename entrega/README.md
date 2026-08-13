@@ -1,10 +1,11 @@
-# CODEFEST AD ASTRA 2026 - Delivery
+# CODEFEST AD ASTRA 2026 - Entrega
 
-This folder is the package to submit. Do not upload the full repository or the
-corpus. Keep the folder structure intact:
+Esta carpeta es el paquete que se debe entregar. No subas el repositorio
+completo ni el corpus. Conserva esta estructura:
 
 ```text
 entrega/
+    README.md
     resultados.jsonl
     generador.py
     informe_tecnico.pdf
@@ -19,13 +20,14 @@ entrega/
         codefest/
 ```
 
-The `src/` directory is a support dependency for `generador.py`; it makes the
-script reproducible when run directly from this folder. `encoder_config.json`
-records the encoder, vector dimension, prefixes, and FAISS configuration.
+El directorio `src/` es una dependencia de soporte de `generador.py`; permite
+ejecutar el script directamente desde esta carpeta. `encoder_config.json`
+registra el encoder, la dimensión de los vectores, los prefijos y la
+configuración de FAISS.
 
-## Run The Delivered System
+## Ejecutar La Entrega
 
-Install Python 3.11, Git LFS, an NVIDIA driver, and the dependencies:
+Instala Python 3.11, Git LFS, un controlador NVIDIA y las dependencias:
 
 ```powershell
 git lfs install
@@ -34,8 +36,8 @@ python -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/
 python -m pip install faiss-cpu==1.12.0 sentence-transformers==5.1.0 networkx==3.5 numpy
 ```
 
-From the repository root, use the official JSONL query file supplied by
-CODEFEST:
+Desde la raíz del repositorio, usa el archivo JSONL de consultas oficiales
+suministrado por CODEFEST:
 
 ```powershell
 python entrega\generador.py `
@@ -47,9 +49,11 @@ python entrega\generador.py `
   --batch-size 16
 ```
 
-The delivered results already contain 50 JSONL records. The graph is the
-optional bonus component and contributes metadata-linked entity relations as
-non-generative retrieval evidence.
+Los resultados entregados ya contienen 50 registros JSONL. El grafo es el
+componente bonus opcional y aporta relaciones entre entidades vinculadas con
+documentos y fragmentos, sin utilizar modelos generativos.
 
-`.gitattributes` and `.gitignore` belong at the repository root for Git LFS and
-local-file protection. They are not required inside this delivery folder.
+`.gitattributes` y `.gitignore` deben permanecer en la raíz del repositorio:
+`.gitattributes` permite descargar correctamente los archivos grandes mediante
+Git LFS y `.gitignore` protege contra la inclusión accidental del corpus y
+archivos temporales. No es necesario copiarlos dentro de esta carpeta.
